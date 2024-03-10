@@ -31,16 +31,16 @@ func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
 	return result
 }
 
-func (m *NonLockingReadMap[T, TK]) GetAll() []*T {
+func (m NonLockingReadMap[T, TK]) GetAll() []*T {
 	return *m.p.Load()
 }
 
-func (m *NonLockingReadMap[T, TK]) Get(key TK) *T {
+func (m NonLockingReadMap[T, TK]) Get(key TK) *T {
 	v, _, _ := m.FindItem(key)
 	return v
 }
 
-func (m *NonLockingReadMap[T, TK]) FindItem(key TK) (*T, int, *[]*T) {
+func (m NonLockingReadMap[T, TK]) FindItem(key TK) (*T, int, *[]*T) {
 	items := m.p.Load() // atomically work on the current list
 	var lower int = 0
 	var upper int = len(*items)

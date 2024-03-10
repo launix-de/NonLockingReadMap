@@ -4,12 +4,12 @@ import "fmt"
 import "testing"
 
 type KeyValue struct {
-	key, value string
+	Key, Value string
 }
 
 // implement the GetKey interface
 func (kv KeyValue) GetKey() string {
-	return kv.key
+	return kv.Key
 }
 
 func TestCreate(t *testing.T) {
@@ -32,7 +32,7 @@ func TestAll(t *testing.T) {
 
 	// read
 	item2 := m.Get("name")
-	if item2.value != "Peter" {
+	if item2.Value != "Peter" {
 		t.Fatalf("Getter failed")
 	}
 
@@ -52,7 +52,7 @@ func TestAll(t *testing.T) {
 	m.Set(&KeyValue{"job", "Developer"})
 	if m.Get("job") == nil {
 		t.Fatalf("Easy Set failed I")
-	} else if m.Get("job").value != "Developer" {
+	} else if m.Get("job").Value != "Developer" {
 		t.Fatalf("Easy Set failed II")
 	}
 
@@ -79,7 +79,7 @@ func TestConcurrentRead(t *testing.T) {
 					t.Fatalf("concurrent nonexisting read fail")
 				} else if num < 2048 && item == nil {
 					t.Fatalf("concurrent read fail I")
-				} else if num < 2048 && item.value != fmt.Sprintf("value %d", num) {
+				} else if num < 2048 && item.Value != fmt.Sprintf("value %d", num) {
 					t.Fatalf("concurrent read fail II")
 				}
 			}
@@ -115,7 +115,7 @@ func TestConcurrentWrite(t *testing.T) {
 						t.Fatalf("concurrent nonexisting read fail")
 					} else if num < 2048 && item == nil {
 						t.Fatalf("concurrent read fail I")
-					} else if num < 2048 && item.value != fmt.Sprintf("value %d", num) && item.value != fmt.Sprintf("value %d-new", num) {
+					} else if num < 2048 && item.Value != fmt.Sprintf("value %d", num) && item.Value != fmt.Sprintf("value %d-new", num) {
 						t.Fatalf("concurrent read fail II")
 					}
 				}
@@ -132,7 +132,7 @@ func TestConcurrentWrite(t *testing.T) {
 		item := m.Get(fmt.Sprintf("key%d", num))
 		if item == nil {
 			t.Fatalf("Concurrent Set failed I with thread %d", num)
-		} else if item.value != fmt.Sprintf("value %d-new", num) {
+		} else if item.Value != fmt.Sprintf("value %d-new", num) {
 			t.Fatalf("Concurrent Set failed II with thread %d", num)
 		}
 	}
