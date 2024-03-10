@@ -11,6 +11,9 @@ properties of this map:
 - internally, a ordered list is rebuilt each time there is a write
 - this library uses atomic compare and swap in order to ensure safety in concurrency
 
+Read more:
+https://launix.de/launix/revisiting-non-blocking-maps-in-go/
+
 ## Interface
 
 ```go

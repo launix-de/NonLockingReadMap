@@ -92,30 +92,15 @@ func (m *NonLockingReadMap[T, TK]) Set(v *T) (*T) {
 
 /* returns true if the key was present */
 func (m *NonLockingReadMap[T, TK]) Remove(key TK) *T {
-	var item *T // the item to remove
-	start:
-	handle := m.p.Load()
-	newhandle := new([]*T)
-	// duplicate check
-	var lower int = 0
-	var upper int = len(*handle)
-	var pivot int
-	for {
-	        if lower == upper {
-	                return nil // value does not exist
-	        }
-	        pivot = (lower + upper) / 2
-	        item = (*handle)[pivot]
-	        if key == (*item).GetKey() {
-	                break // found, ok
-	        } else if key < (*item).GetKey() {
-	                upper = pivot
-	        } else {
-	                lower = pivot + 1
-	        }
+	restart:
+	item, pivot, handle := m.FindItem(key)
+
+	if pivot == -1 {
+		return item // value does not exist
 	}
 	
 	// rebuild the array without the element
+	newhandle := new([]*T)
 	*newhandle = make([]*T, 0, len(*handle) - 1)
 	*newhandle = append(*newhandle, (*handle)[0:pivot]...)
 	*newhandle = append(*newhandle, (*handle)[pivot+1:]...)
@@ -123,7 +108,7 @@ func (m *NonLockingReadMap[T, TK]) Remove(key TK) *T {
 		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
 	})
 	if !m.p.CompareAndSwap(handle, newhandle) {
-		goto start
+		goto restart
 	}
 	// return the removed item
 	return item
