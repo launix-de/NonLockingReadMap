@@ -1,6 +1,7 @@
 package NonLockingReadMap
 
 import "sort"
+import "unsafe"
 import "sync/atomic"
 import "golang.org/x/exp/constraints"
 
@@ -17,37 +18,42 @@ import "golang.org/x/exp/constraints"
 
 */
 
-type KeyGetter[TK any] interface {
+type KeyGetter[TK constraints.Ordered] interface {
 	GetKey() TK
 }
-type NonLockingReadMap[T *KeyGetter[TK], TK constraints.Ordered] struct {
-	p atomic.Pointer[[]T]
-}
-type NonLockingReadMapContent[T any] []T
-
-/* implement sort.Interface */
-func (x NonLockingReadMapContent[T]) Len() int {
-	return len(x)
+type NonLockingReadMap[T KeyGetter[TK], TK constraints.Ordered] struct {
+	p atomic.Pointer[[]*T]
 }
 
-func (m *NonLockingReadMap[T, TK]) Get(key TK) T {
-	v, _ := m.GetHandle(key)
+func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
+	var result NonLockingReadMap[T, TK]
+	result.p.Store(new([]*T))
+	return result
+}
+
+func (m *NonLockingReadMap[T, TK]) GetAll() []*T {
+	return *m.p.Load()
+}
+
+func (m *NonLockingReadMap[T, TK]) Get(key TK) *T {
+	v, _, _ := m.FindItem(key)
 	return v
 }
 
-func (m *NonLockingReadMap[T, TK]) GetHandle(key TK) (T, *[]T) {
+func (m *NonLockingReadMap[T, TK]) FindItem(key TK) (*T, int, *[]*T) {
 	items := m.p.Load() // atomically work on the current list
 	var lower int = 0
 	var upper int = len(*items)
 	for {
 		if lower == upper {
-			return nil, items // item does not exist
+			return nil, -1, items // item does not exist
 		}
 		pivot := (lower + upper) / 2
 		item := (*items)[pivot]
 		itemkey := (*item).GetKey()
 		if key == itemkey {
-			return item, items // found item
+			// found item (item + pivot) --> do atomic compare and swap
+			return item, pivot, items // return old item
 		} else if key < itemkey {
 			upper = pivot
 		} else {
@@ -56,16 +62,70 @@ func (m *NonLockingReadMap[T, TK]) GetHandle(key TK) (T, *[]T) {
 	}
 }
 
-/* in case, true is returned, the value is safed. Otherwise, you must repeat GetHandle + SetHandle */
-func (m *NonLockingReadMap[T, TK]) SetHandle(v T, handle *[]T) bool {
-	newhandle := new([]T) // new pointer wrapper
-	*newhandle = make([]T, len(*handle) + 1) // create new slice
+func (m *NonLockingReadMap[T, TK]) Set(v *T) (*T) {
+	restart:
+	item, pivot, handle := m.FindItem((*v).GetKey())
+
+	if pivot != -1 {
+		// replace in-place
+		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&(*handle)[pivot])), unsafe.Pointer(item), unsafe.Pointer(v)) {
+			goto restart
+		}
+		// also check if our list stayed unchanged
+		if !m.p.CompareAndSwap(handle, handle) {
+			goto restart
+		}
+	}
+
+	newhandle := new([]*T) // new pointer wrapper
+	*newhandle = make([]*T, 0, len(*handle) + 1) // create new slice
 	*newhandle = append(*newhandle, (*handle)...) // copy old array
 	*newhandle = append(*newhandle, v) // add new item
 	sort.Slice(*newhandle, func (i, j int) bool { // sort
 		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
 	})
-	return m.p.CompareAndSwap(handle, newhandle)
+	if !m.p.CompareAndSwap(handle, newhandle) {
+		goto restart
+	}
+	return nil // because we inserted a new element
 }
 
+/* returns true if the key was present */
+func (m *NonLockingReadMap[T, TK]) Remove(key TK) *T {
+	var item *T // the item to remove
+	start:
+	handle := m.p.Load()
+	newhandle := new([]*T)
+	// duplicate check
+	var lower int = 0
+	var upper int = len(*handle)
+	var pivot int
+	for {
+	        if lower == upper {
+	                return nil // value does not exist
+	        }
+	        pivot = (lower + upper) / 2
+	        item = (*handle)[pivot]
+	        if key == (*item).GetKey() {
+	                break // found, ok
+	        } else if key < (*item).GetKey() {
+	                upper = pivot
+	        } else {
+	                lower = pivot + 1
+	        }
+	}
+	
+	// rebuild the array without the element
+	*newhandle = make([]*T, 0, len(*handle) - 1)
+	*newhandle = append(*newhandle, (*handle)[0:pivot]...)
+	*newhandle = append(*newhandle, (*handle)[pivot+1:]...)
+	sort.Slice(*newhandle, func (i, j int) bool { // sort
+		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
+	})
+	if !m.p.CompareAndSwap(handle, newhandle) {
+		goto start
+	}
+	// return the removed item
+	return item
+}
 
