@@ -9,6 +9,7 @@ properties of this map:
 - write is optimistic, worst case is a eternal loop (with a probability of 0%)
 - use this map if you read often but write very seldom
 - internally, a ordered list is rebuilt each time there is a write
+- this library uses atomic compare and swap in order to ensure safety in concurrency
 
 ## Interface
 
@@ -59,3 +60,25 @@ func main() {
 	m.Remove("name")
 }
 ```
+
+## Benchmark
+Test setup:
+- AMD Ryzen 9 7900X3D 12-Core Processor
+- 64GiB of DDR5 RAM
+- 3D V-Cache
+
+
+Read benchmark:
+- 2048 items serial write
+- 10,000 go routines
+- each reading and checking 10,000 values
+- in total 100,000,000 items read in 2.62s on 24 threads
+- so 38M reads/sec
+
+Write benchmark:
+- 2048 items serial write
+- 1,000 go routines
+- each doing 4 passes
+- each pass is 10,000 reads and one write
+- in total 4,000 reads in 1.14s on 24 thread (during a heavvy read load)
+- so 3,5K writes/sec (while rebuilding a 2,048 item list and having 10,000 reads between each write)
