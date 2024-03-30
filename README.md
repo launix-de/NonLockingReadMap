@@ -85,3 +85,27 @@ Write benchmark:
 - each pass is 10,000 reads and one write
 - in total 4,000 reads in 1.14s on 24 thread (during a heavvy read load)
 - so 3,5K writes/sec (while rebuilding a 2,048 item list and having 10,000 reads between each write)
+
+# NonBlockingBitMap
+
+properties of this map:
+  - non-blocking read
+  - non-blocking write
+
+## Interface
+
+```go
+import "github.com/launix-de/NonLockingReadMap"
+
+/*
+the interface needs two types: T and TK.
+T must be a pointer to something,
+TK must be a string, int or float for the keys.
+T must provide a method GetKey() TK
+*/
+
+func NewBitMap() NonBlockingBitMap
+func (b *NonBlockingBitMap) Reset()
+func (b *NonBlockingBitMap) Get(i int) bool
+func (b *NonBlockingBitMap) Set(i int, val bool)
+```
