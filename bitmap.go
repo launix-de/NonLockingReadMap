@@ -130,17 +130,17 @@ func (b *NonBlockingBitMap) CountUntil(idx uint) (result uint) {
 	if dataptr == nil {
 		return 0
 	}
-	for i := 0; i < (idx >> 6); i++ {
-		if i >= len(*dataptr) {
+	for i := uint(0); i < (idx >> 6); i++ {
+		if i >= uint(len(*dataptr)) {
 			return
 		}
 		result += uint(bits.OnesCount64((*dataptr)[i]))
 	}
-	if (idx >> 6) >= len(*dataptr) {
+	if (idx >> 6) >= uint(len(*dataptr)) {
 		return
 	}
 	currentCell := (*dataptr)[idx >> 6]
-	for i := 0; i < (idx & 0b111111); i++ {
+	for i := uint(0); i < (idx & 0b111111); i++ {
 		if ((currentCell >> i) & 1) != 0 {
 			result++
 		}
