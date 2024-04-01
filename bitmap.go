@@ -125,7 +125,7 @@ func (b *NonBlockingBitMap) Count() (result uint) {
 	return
 }
 
-func (b *NonBlockingBitMap) CountUntil(idx int) (result uint) {
+func (b *NonBlockingBitMap) CountUntil(idx uint) (result uint) {
 	dataptr := b.data.Load()
 	if dataptr == nil {
 		return 0
