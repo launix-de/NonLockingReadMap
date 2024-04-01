@@ -22,17 +22,27 @@ import "testing"
 
 func TestSimple(t *testing.T) {
 	bm := NewBitMap()
+	if bm.Count() != 0 {
+		t.Fatalf("count = 0 .1")
+	}
 	if bm.Get(0) {
 		t.Fatalf("read 0")
 	}
 	if bm.Get(1000) {
 		t.Fatalf("read 1000")
 	}
+	if bm.Count() != 0 {
+		t.Fatalf("count = 0 .2")
+	}
 
 	bm.Set(5, true)
 	bm.Set(6, true)
 	bm.Set(77, true)
 	bm.Set(1000, true)
+
+	if bm.Count() != 4 {
+		t.Fatalf("count = 4")
+	}
 
 	if bm.Get(0) {
 		t.Fatalf("read 0 .2")
@@ -66,6 +76,10 @@ func TestSimple(t *testing.T) {
 	}
 
 	bm.Set(6, false)
+
+	if bm.Count() != 3 {
+		t.Fatalf("count = 3")
+	}
 
 	if !bm.Get(5) {
 		t.Fatalf("read 5 .2")

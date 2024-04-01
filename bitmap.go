@@ -18,6 +18,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 package NonLockingReadMap
 
 import "unsafe"
+import "math/bits"
 import "sync/atomic"
 
 /*
@@ -98,6 +99,25 @@ func (b *NonBlockingBitMap) Set(i int, val bool) {
 			break
 		}
 	}
+}
+
+func (b *NonBlockingBitMap) Size() int {
+	dataptr := b.data.Load()
+	if dataptr == nil {
+		return 48
+	}
+	return 8 * 8 + len(*dataptr)
+}
+
+func (b *NonBlockingBitMap) Count() (result int) {
+	dataptr := b.data.Load()
+	if dataptr == nil {
+		return 0
+	}
+	for _, v := range *dataptr {
+		result += bits.OnesCount64(v)
+	}
+	return
 }
 
 
