@@ -17,7 +17,6 @@ Copyright (C) 2024  Carl-Philip Hänsch
 
 package NonLockingReadMap
 
-import "unsafe"
 import "math/bits"
 import "sync/atomic"
 
@@ -29,11 +28,6 @@ import "sync/atomic"
   - non-blocking write
 
 */
-type slice struct {
-	array unsafe.Pointer
-	len   int
-	cap   int
-}
 type NonBlockingBitMap struct {
 	data atomic.Pointer[[]uint64]
 }
@@ -51,20 +45,20 @@ func (b *NonBlockingBitMap) Reset() {
 	}
 }
 
-func (b *NonBlockingBitMap) Get(i int) bool {
+func (b *NonBlockingBitMap) Get(i uint) bool {
 	ptr := b.data.Load()
 	if ptr == nil {
 		return false
 	}
 	data := *ptr
-	if (i >> 6) > len(data) {
+	if (i >> 6) > uint(len(data)) {
 		return false
 	} else {
 		return ((data[i >> 6] >> (i & 0b111111)) & 1) != 0
 	}
 }
 
-func (b *NonBlockingBitMap) Set(i int, val bool) {
+func (b *NonBlockingBitMap) Set(i uint, val bool) {
 	// first step: load array and ensure it is big enough
 	var data []uint64
 	for {
@@ -74,7 +68,7 @@ func (b *NonBlockingBitMap) Set(i int, val bool) {
 		} else {
 			data = *dataptr
 		}
-		if (i >> 6) >= len(data) {
+		if (i >> 6) >= uint(len(data)) {
 			// first step: increase data size
 			newdata := append(data, 0) // allocate new element
 			if b.data.CompareAndSwap(dataptr, &newdata) {
@@ -101,21 +95,21 @@ func (b *NonBlockingBitMap) Set(i int, val bool) {
 	}
 }
 
-func (b *NonBlockingBitMap) Size() int {
+func (b *NonBlockingBitMap) Size() uint {
 	dataptr := b.data.Load()
 	if dataptr == nil {
 		return 48
 	}
-	return 8 * 8 + len(*dataptr)
+	return 8 * 8 + uint(len(*dataptr))
 }
 
-func (b *NonBlockingBitMap) Count() (result int) {
+func (b *NonBlockingBitMap) Count() (result uint) {
 	dataptr := b.data.Load()
 	if dataptr == nil {
 		return 0
 	}
 	for _, v := range *dataptr {
-		result += bits.OnesCount64(v)
+		result += uint(bits.OnesCount64(v))
 	}
 	return
 }
