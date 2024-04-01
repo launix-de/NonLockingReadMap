@@ -45,6 +45,17 @@ func (b *NonBlockingBitMap) Reset() {
 	}
 }
 
+func (b *NonBlockingBitMap) Copy() (result NonBlockingBitMap) {
+	dataptr := b.data.Load()
+	if dataptr == nil {
+		return
+	}
+	data2 := make([]uint64, len(*dataptr))
+	copy(data2, *dataptr)
+	result.data.Store(&data2)
+	return
+}
+
 func (b *NonBlockingBitMap) Get(i uint) bool {
 	ptr := b.data.Load()
 	if ptr == nil {
@@ -110,6 +121,29 @@ func (b *NonBlockingBitMap) Count() (result uint) {
 	}
 	for _, v := range *dataptr {
 		result += uint(bits.OnesCount64(v))
+	}
+	return
+}
+
+func (b *NonBlockingBitMap) CountUntil(idx int) (result uint) {
+	dataptr := b.data.Load()
+	if dataptr == nil {
+		return 0
+	}
+	for i := 0; i < (idx >> 6); i++ {
+		if i >= len(*dataptr) {
+			return
+		}
+		result += uint(bits.OnesCount64((*dataptr)[i]))
+	}
+	if (idx >> 6) >= len(*dataptr) {
+		return
+	}
+	currentCell := (*dataptr)[idx >> 6]
+	for i := 0; i < (idx & 0b111111); i++ {
+		if ((currentCell >> i) & 1) != 0 {
+			result++
+		}
 	}
 	return
 }

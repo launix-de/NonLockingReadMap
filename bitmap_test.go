@@ -17,6 +17,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 
 package NonLockingReadMap
 
+import "fmt"
 import "testing"
 
 
@@ -42,6 +43,22 @@ func TestSimple(t *testing.T) {
 
 	if bm.Count() != 4 {
 		t.Fatalf("count = 4")
+	}
+
+	if bm.CountUntil(6) != 1 {
+		t.Fatalf("countuntil 5: " + fmt.Sprint(bm.CountUntil(6)))
+	}
+
+	if bm.CountUntil(7) != 2 {
+		t.Fatalf("countuntil 6: " + fmt.Sprint(bm.CountUntil(7)))
+	}
+
+	if bm.CountUntil(100) != 3 {
+		t.Fatalf("countuntil 100: " + fmt.Sprint(bm.CountUntil(100)))
+	}
+
+	if bm.CountUntil(10000) != 4 {
+		t.Fatalf("countuntil 10000: " + fmt.Sprint(bm.CountUntil(10000)))
 	}
 
 	if bm.Get(0) {
