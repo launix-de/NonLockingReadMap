@@ -62,7 +62,7 @@ func (b *NonBlockingBitMap) Get(i uint) bool {
 		return false
 	}
 	data := *ptr
-	if (i >> 6) > uint(len(data)) {
+	if (i >> 6) >= uint(len(data)) {
 		return false
 	} else {
 		return ((data[i >> 6] >> (i & 0b111111)) & 1) != 0
