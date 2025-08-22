@@ -53,7 +53,7 @@ func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
 	return result
 }
 
-func (b *NonLockingReadMap[T, TK]) ComputeSize() uint {
+func (b NonLockingReadMap[T, TK]) ComputeSize() uint {
 	dataptr := b.p.Load()
 	var sz uint = 16 /* allocation of struct */ + 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
 	for _, v := range *dataptr {

@@ -24,6 +24,10 @@ type KeyValue struct {
 	Key, Value string
 }
 
+func (x KeyValue) ComputeSize() uint {
+	return 16 + 8 * (uint(len(x.Key)-1) / 8 + 1) + 16 + 8 * (uint(len(x.Value)-1) / 8 + 1)
+}
+
 // implement the GetKey interface
 func (kv KeyValue) GetKey() string {
 	return kv.Key

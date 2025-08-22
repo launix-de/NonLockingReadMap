@@ -20,7 +20,6 @@ package NonLockingReadMap
 import "testing"
 import "encoding/json"
 
-
 func TestJSON(t *testing.T) {
 	// create
 	m := New[KeyValue, string]()

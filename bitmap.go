@@ -36,9 +36,9 @@ func NewBitMap() (result NonBlockingBitMap) {
 	return
 }
 
-func (b *NonBlockingBitMap) ComputeSize() uint {
+func (b NonBlockingBitMap) ComputeSize() uint {
 	dataptr := b.data.Load()
-	return 16 /* allocation of struct */ + 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
+	return 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
 }
 
 func (b *NonBlockingBitMap) Reset() {
