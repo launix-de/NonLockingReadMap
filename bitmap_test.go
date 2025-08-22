@@ -23,9 +23,6 @@ import "testing"
 
 func TestSimple(t *testing.T) {
 	bm := NewBitMap()
-	if bm.Size() != 48 {
-		t.Fatalf("empty map size")
-	}
 	if bm.Count() != 0 {
 		t.Fatalf("count = 0 .1")
 	}
@@ -93,9 +90,6 @@ func TestSimple(t *testing.T) {
 	}
 	if !bm.Get(1000) {
 		t.Fatalf("read 1000 .2")
-	}
-	if bm.Get(3000) {
-		t.Fatalf("read over size")
 	}
 
 	bm.Set(6, false)

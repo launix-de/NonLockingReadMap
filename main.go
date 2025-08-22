@@ -35,7 +35,12 @@ import "golang.org/x/exp/constraints"
 
 */
 
+type Sizable interface {
+        ComputeSize() uint
+}
+
 type KeyGetter[TK constraints.Ordered] interface {
+	Sizable
 	GetKey() TK
 }
 type NonLockingReadMap[T KeyGetter[TK], TK constraints.Ordered] struct {
@@ -46,6 +51,15 @@ func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
 	var result NonLockingReadMap[T, TK]
 	result.p.Store(new([]*T))
 	return result
+}
+
+func (b *NonLockingReadMap[T, TK]) ComputeSize() uint {
+	dataptr := b.p.Load()
+	var sz uint = 16 /* allocation of struct */ + 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
+	for _, v := range *dataptr {
+		sz += (*v).ComputeSize()
+	}
+	return sz
 }
 
 func (m NonLockingReadMap[T, TK]) GetAll() []*T {
