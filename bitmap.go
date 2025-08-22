@@ -38,7 +38,11 @@ func NewBitMap() (result NonBlockingBitMap) {
 
 func (b NonBlockingBitMap) ComputeSize() uint {
 	dataptr := b.data.Load()
-	return 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
+	var sz uint = 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */
+	if dataptr != nil {
+		sz += 8 * uint(len(*dataptr)) /* slice storage */
+	}
+	return sz
 }
 
 func (b *NonBlockingBitMap) Reset() {
