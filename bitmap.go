@@ -78,6 +78,14 @@ func (b *NonBlockingBitMap) Get(i uint) bool {
 	}
 }
 
+// DataPtr returns the raw pointer to the underlying []uint64 slice.
+// This is useful for JIT compilation where the pointer can be embedded
+// as an immediate value. The returned pointer may be nil if no bits
+// have been set yet. The slice data is safe to read concurrently.
+func (b *NonBlockingBitMap) DataPtr() *[]uint64 {
+	return b.data.Load()
+}
+
 func (b *NonBlockingBitMap) Set(i uint, val bool) {
 	// first step: load array and ensure it is big enough
 	var data []uint64
