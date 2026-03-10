@@ -89,6 +89,10 @@ func (b *NonBlockingBitMap) Copy() (result NonBlockingBitMap) {
 // ensureWord grows the backing slice to include wordIdx if necessary.
 // It returns the (possibly newly allocated) slice. Safe to call from multiple
 // goroutines because it uses a CAS on the slice pointer.
+//
+// The copy of existing elements uses atomic.LoadUint64 to avoid a race with
+// concurrent Atomic* writes on the old slice: a plain copy() would conflict
+// with a CompareAndSwapUint64 on the same element.
 func (b *NonBlockingBitMap) ensureWord(wordIdx uint) []uint64 {
 	for {
 		dataptr := b.data.Load()
@@ -100,7 +104,9 @@ func (b *NonBlockingBitMap) ensureWord(wordIdx uint) []uint64 {
 			return data
 		}
 		newdata := make([]uint64, wordIdx+1)
-		copy(newdata, data)
+		for i := range data {
+			newdata[i] = atomic.LoadUint64(&data[i])
+		}
 		if b.data.CompareAndSwap(dataptr, &newdata) {
 			return newdata
 		}
@@ -112,11 +118,10 @@ func (b *NonBlockingBitMap) ensureWord(wordIdx uint) []uint64 {
 // Read operations
 // ---------------------------------------------------------------------------
 
-// Get returns the bit at position i.
-// Safe to call concurrently with Atomic* writers. The atomic pointer load
-// provides acquire semantics; the subsequent word read is a plain load which
-// on all supported 64-bit architectures (x86-64, arm64) is indivisible for
-// aligned 64-bit values. For strict Go memory-model correctness use AtomicGet.
+// Get returns the bit at position i using a plain (non-atomic) word read.
+// Safe only when no concurrent writes are happening — e.g. while holding
+// an external read lock that excludes all writers, or in exclusive single-
+// goroutine use. If concurrent Atomic* writes are possible, use AtomicGet.
 func (b *NonBlockingBitMap) Get(i uint) bool {
 	ptr := b.data.Load()
 	if ptr == nil {
