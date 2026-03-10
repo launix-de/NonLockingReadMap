@@ -117,4 +117,73 @@ func TestSimple(t *testing.T) {
 
 // TODO: parallel concurrent test
 
+func TestOrFrom(t *testing.T) {
+	// word-aligned offset
+	var a, b NonBlockingBitMap
+	b.Set(0, true)
+	b.Set(3, true)
+	b.Set(63, true)
+	a.OrFrom(&b, 64) // shift b by 64 bits
+	if a.Get(64) != true || a.Get(67) != true || a.Get(127) != true {
+		t.Fatalf("OrFrom aligned: expected bits at 64, 67, 127")
+	}
+	if a.Get(0) || a.Get(63) || a.Get(128) {
+		t.Fatalf("OrFrom aligned: unexpected bits set")
+	}
+
+	// non-aligned offset
+	var c, d NonBlockingBitMap
+	d.Set(0, true)
+	d.Set(63, true)
+	c.OrFrom(&d, 4) // bit 0 → 4, bit 63 → 67
+	if !c.Get(4) || !c.Get(67) {
+		t.Fatalf("OrFrom non-aligned: expected bits at 4 and 67")
+	}
+	if c.Get(0) || c.Get(63) {
+		t.Fatalf("OrFrom non-aligned: unexpected bits")
+	}
+}
+
+func TestXorFrom(t *testing.T) {
+	var a, b NonBlockingBitMap
+	a.Set(68, true) // pre-set a bit
+	b.Set(4, true)  // will flip bit 68 in a (offset=64)
+	b.Set(5, true)  // will flip bit 69 in a
+	a.XorFrom(&b, 64)
+	if a.Get(68) {
+		t.Fatalf("XorFrom: bit 68 should be cleared (was set, XOR flips it)")
+	}
+	if !a.Get(69) {
+		t.Fatalf("XorFrom: bit 69 should be set (was clear, XOR flips it)")
+	}
+}
+
+func TestAndNotFrom(t *testing.T) {
+	var a, b NonBlockingBitMap
+	a.Set(64, true)
+	a.Set(65, true)
+	a.Set(70, true)
+	b.Set(0, true) // offset=64 → clears bit 64 in a
+	b.Set(1, true) // offset=64 → clears bit 65 in a
+	a.AndNotFrom(&b, 64)
+	if a.Get(64) || a.Get(65) {
+		t.Fatalf("AndNotFrom: bits 64 and 65 should be cleared")
+	}
+	if !a.Get(70) {
+		t.Fatalf("AndNotFrom: bit 70 should remain set")
+	}
+}
+
+func TestBitmapOpsNilOther(t *testing.T) {
+	var a, empty NonBlockingBitMap
+	a.Set(5, true)
+	// operations with empty/nil other should be no-ops
+	a.OrFrom(&empty, 0)
+	a.XorFrom(&empty, 0)
+	a.AndNotFrom(&empty, 0)
+	if !a.Get(5) {
+		t.Fatalf("bit 5 should still be set after no-op operations")
+	}
+}
+
 
