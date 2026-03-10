@@ -221,6 +221,21 @@ func (b *NonBlockingBitMap) Count() (result uint) {
 	return
 }
 
+// Iterate calls fn for each bit index that is set, in ascending order.
+func (b *NonBlockingBitMap) Iterate(fn func(uint)) {
+	dataptr := b.data.Load()
+	if dataptr == nil {
+		return
+	}
+	for wi, word := range *dataptr {
+		for word != 0 {
+			bit := uint(bits.TrailingZeros64(word))
+			fn(uint(wi)*64 + bit)
+			word &^= 1 << bit
+		}
+	}
+}
+
 func (b *NonBlockingBitMap) CountUntil(idx uint) (result uint) {
 	dataptr := b.data.Load()
 	if dataptr == nil {
