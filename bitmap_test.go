@@ -20,7 +20,7 @@ package NonLockingReadMap
 import "fmt"
 import "testing"
 
-
+// TestSimple covers basic Get/Set/Count/Reset (plain single-writer variants).
 func TestSimple(t *testing.T) {
 	bm := NewBitMap()
 	if bm.Count() != 0 {
@@ -112,10 +112,34 @@ func TestSimple(t *testing.T) {
 	if bm.Get(1000) {
 		t.Fatalf("read 1000 .3")
 	}
-
 }
 
-// TODO: parallel concurrent test
+// TestAtomicSet verifies that AtomicSet and AtomicGet work correctly
+// (same semantics as Set/Get, just with CAS / atomic loads).
+func TestAtomicSet(t *testing.T) {
+	var bm NonBlockingBitMap
+	bm.AtomicSet(5, true)
+	bm.AtomicSet(127, true)
+	if !bm.AtomicGet(5) || !bm.Get(5) {
+		t.Fatalf("AtomicSet 5 not visible")
+	}
+	if !bm.AtomicGet(127) {
+		t.Fatalf("AtomicSet 127 not visible")
+	}
+	bm.AtomicSet(5, false)
+	if bm.AtomicGet(5) {
+		t.Fatalf("AtomicSet clear 5 failed")
+	}
+	if !bm.AtomicGet(127) {
+		t.Fatalf("AtomicSet 127 should remain set")
+	}
+}
+
+// TODO: parallel concurrent test for Atomic* variants
+
+// ---------------------------------------------------------------------------
+// Bulk operations — plain variants
+// ---------------------------------------------------------------------------
 
 func TestOrFrom(t *testing.T) {
 	// word-aligned offset
@@ -124,18 +148,18 @@ func TestOrFrom(t *testing.T) {
 	b.Set(3, true)
 	b.Set(63, true)
 	a.OrFrom(&b, 64) // shift b by 64 bits
-	if a.Get(64) != true || a.Get(67) != true || a.Get(127) != true {
+	if !a.Get(64) || !a.Get(67) || !a.Get(127) {
 		t.Fatalf("OrFrom aligned: expected bits at 64, 67, 127")
 	}
 	if a.Get(0) || a.Get(63) || a.Get(128) {
 		t.Fatalf("OrFrom aligned: unexpected bits set")
 	}
 
-	// non-aligned offset
+	// non-aligned offset: bit 0 → 4, bit 63 → 67
 	var c, d NonBlockingBitMap
 	d.Set(0, true)
 	d.Set(63, true)
-	c.OrFrom(&d, 4) // bit 0 → 4, bit 63 → 67
+	c.OrFrom(&d, 4)
 	if !c.Get(4) || !c.Get(67) {
 		t.Fatalf("OrFrom non-aligned: expected bits at 4 and 67")
 	}
@@ -146,9 +170,9 @@ func TestOrFrom(t *testing.T) {
 
 func TestXorFrom(t *testing.T) {
 	var a, b NonBlockingBitMap
-	a.Set(68, true) // pre-set a bit
-	b.Set(4, true)  // will flip bit 68 in a (offset=64)
-	b.Set(5, true)  // will flip bit 69 in a
+	a.Set(68, true) // pre-set
+	b.Set(4, true)  // offset=64 → flips bit 68 in a
+	b.Set(5, true)  // offset=64 → flips bit 69 in a (was clear)
 	a.XorFrom(&b, 64)
 	if a.Get(68) {
 		t.Fatalf("XorFrom: bit 68 should be cleared (was set, XOR flips it)")
@@ -174,16 +198,67 @@ func TestAndNotFrom(t *testing.T) {
 	}
 }
 
-func TestBitmapOpsNilOther(t *testing.T) {
-	var a, empty NonBlockingBitMap
-	a.Set(5, true)
-	// operations with empty/nil other should be no-ops
-	a.OrFrom(&empty, 0)
-	a.XorFrom(&empty, 0)
-	a.AndNotFrom(&empty, 0)
-	if !a.Get(5) {
-		t.Fatalf("bit 5 should still be set after no-op operations")
+// ---------------------------------------------------------------------------
+// Bulk operations — Atomic* variants (same semantics, different impl)
+// ---------------------------------------------------------------------------
+
+func TestAtomicOrFrom(t *testing.T) {
+	var a, b NonBlockingBitMap
+	b.Set(0, true)
+	b.Set(63, true)
+	a.AtomicOrFrom(&b, 64)
+	if !a.Get(64) || !a.Get(127) {
+		t.Fatalf("AtomicOrFrom: expected bits at 64 and 127")
+	}
+	if a.Get(63) || a.Get(128) {
+		t.Fatalf("AtomicOrFrom: unexpected bits")
 	}
 }
 
+func TestAtomicXorFrom(t *testing.T) {
+	var a, b NonBlockingBitMap
+	a.Set(68, true)
+	b.Set(4, true)
+	b.Set(5, true)
+	a.AtomicXorFrom(&b, 64)
+	if a.Get(68) {
+		t.Fatalf("AtomicXorFrom: bit 68 should be cleared")
+	}
+	if !a.Get(69) {
+		t.Fatalf("AtomicXorFrom: bit 69 should be set")
+	}
+}
 
+func TestAtomicAndNotFrom(t *testing.T) {
+	var a, b NonBlockingBitMap
+	a.Set(64, true)
+	a.Set(65, true)
+	a.Set(70, true)
+	b.Set(0, true)
+	b.Set(1, true)
+	a.AtomicAndNotFrom(&b, 64)
+	if a.Get(64) || a.Get(65) {
+		t.Fatalf("AtomicAndNotFrom: bits 64 and 65 should be cleared")
+	}
+	if !a.Get(70) {
+		t.Fatalf("AtomicAndNotFrom: bit 70 should remain set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Edge cases
+// ---------------------------------------------------------------------------
+
+func TestBitmapOpsNilOther(t *testing.T) {
+	var a, empty NonBlockingBitMap
+	a.Set(5, true)
+	a.OrFrom(&empty, 0)
+	a.XorFrom(&empty, 0)
+	a.AndNotFrom(&empty, 0)
+	a.AtomicOrFrom(&empty, 0)
+	a.AtomicXorFrom(&empty, 0)
+	a.AtomicAndNotFrom(&empty, 0)
+	if !a.Get(5) {
+		t.Fatalf("bit 5 should still be set after all no-op operations")
+	}
+}
