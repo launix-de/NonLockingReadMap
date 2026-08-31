@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  Carl-Philip Hänsch
+Copyright (C) 2024-2026  Carl-Philip Hänsch
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ type KeyValue struct {
 }
 
 func (x KeyValue) ComputeSize() uint {
-	return 16 + 8 * (uint(len(x.Key)-1) / 8 + 1) + 16 + 8 * (uint(len(x.Value)-1) / 8 + 1)
+	return 16 + 8*(uint(len(x.Key)-1)/8+1) + 16 + 8*(uint(len(x.Value)-1)/8+1)
 }
 
 // implement the GetKey interface
@@ -36,12 +36,11 @@ func (kv KeyValue) GetKey() string {
 func TestCreate(t *testing.T) {
 	New[KeyValue, string]()
 	/*
-	if m != nil {
-		t.Fatalf("New returned nil")
-	}*/
+		if m != nil {
+			t.Fatalf("New returned nil")
+		}*/
 
 }
-
 
 func TestAll(t *testing.T) {
 	// create
@@ -79,6 +78,25 @@ func TestAll(t *testing.T) {
 
 }
 
+func TestSetReplacesWithoutDuplicatingKey(t *testing.T) {
+	m := New[KeyValue, string]()
+	old := &KeyValue{Key: "same", Value: "old"}
+	newValue := &KeyValue{Key: "same", Value: "new"}
+	if replaced := m.Set(old); replaced != nil {
+		t.Fatalf("first Set replaced %v", replaced)
+	}
+	if replaced := m.Set(newValue); replaced != old {
+		t.Fatalf("second Set replaced %v, want old value", replaced)
+	}
+	items := m.p.Load()
+	if len(*items) != 1 {
+		t.Fatalf("replacement left %d entries, want 1", len(*items))
+	}
+	if got := m.Get("same"); got != newValue {
+		t.Fatalf("Get returned %v, want replacement", got)
+	}
+}
+
 func TestConcurrentRead(t *testing.T) {
 	// create
 	m := New[KeyValue, string]()
@@ -92,9 +110,9 @@ func TestConcurrentRead(t *testing.T) {
 	// concurrent read
 	done := make(chan bool, 10)
 	for i := 0; i < 10000; i++ {
-		go func (i int) {
+		go func(i int) {
 			for j := 0; j < 10000; j++ {
-				num := (101 * i + j + 13) % 2050
+				num := (101*i + j + 13) % 2050
 				item := m.Get(fmt.Sprintf("key%d", num))
 				if num >= 2048 && item != nil {
 					t.Fatalf("concurrent nonexisting read fail")
@@ -110,7 +128,7 @@ func TestConcurrentRead(t *testing.T) {
 
 	for i := 0; i < 10000; i++ {
 		// collect all threads
-		<- done
+		<-done
 	}
 }
 
@@ -127,10 +145,10 @@ func TestConcurrentWrite(t *testing.T) {
 	// concurrent read
 	done := make(chan int, 10)
 	for i := 0; i < 1000; i++ {
-		go func (i int) {
+		go func(i int) {
 			for pass := 0; pass < 4; pass++ {
 				for j := 0; j < 10000; j++ {
-					num := (101 * i + j + 13) % 2050
+					num := (101*i + j + 13) % 2050
 					item := m.Get(fmt.Sprintf("key%d", num))
 					if num >= 2048 && item != nil {
 						t.Fatalf("concurrent nonexisting read fail")
@@ -148,7 +166,7 @@ func TestConcurrentWrite(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		// collect all threads
-		num := <- done
+		num := <-done
 		// check if they did their set
 		item := m.Get(fmt.Sprintf("key%d", num))
 		if item == nil {
