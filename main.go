@@ -113,6 +113,9 @@ restart:
 	*newhandle = make([]*T, 0, len(*handle)+1)    // create new slice
 	*newhandle = append(*newhandle, (*handle)...) // copy old array
 	*newhandle = append(*newhandle, v)            // add new item
+	sort.Slice(*newhandle, func(i, j int) bool {
+		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
+	})
 	if !m.p.CompareAndSwap(handle, newhandle) {
 		goto restart
 	}
@@ -133,9 +136,6 @@ restart:
 	*newhandle = make([]*T, 0, len(*handle)-1)
 	*newhandle = append(*newhandle, (*handle)[0:pivot]...)
 	*newhandle = append(*newhandle, (*handle)[pivot+1:]...)
-	sort.Slice(*newhandle, func(i, j int) bool { // sort
-		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
-	})
 	if !m.p.CompareAndSwap(handle, newhandle) {
 		goto restart
 	}
