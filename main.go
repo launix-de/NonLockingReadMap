@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  Carl-Philip Hänsch
+Copyright (C) 2024-2026  Carl-Philip Hänsch
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ import "golang.org/x/exp/constraints"
 */
 
 type Sizable interface {
-        ComputeSize() uint
+	ComputeSize() uint
 }
 
 type KeyGetter[TK constraints.Ordered] interface {
@@ -47,7 +47,7 @@ type NonLockingReadMap[T KeyGetter[TK], TK constraints.Ordered] struct {
 	p atomic.Pointer[[]*T]
 }
 
-func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
+func New[T KeyGetter[TK], TK constraints.Ordered]() NonLockingReadMap[T, TK] {
 	var result NonLockingReadMap[T, TK]
 	result.p.Store(new([]*T))
 	return result
@@ -55,7 +55,7 @@ func New[T KeyGetter[TK], TK constraints.Ordered] () NonLockingReadMap[T, TK] {
 
 func (b NonLockingReadMap[T, TK]) ComputeSize() uint {
 	dataptr := b.p.Load()
-	var sz uint = 16 /* allocation of struct */ + 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8 * uint(len(*dataptr)) /* slice storage */
+	var sz uint = 16 /* allocation of struct */ + 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */ + 8*uint(len(*dataptr)) /* slice storage */
 	for _, v := range *dataptr {
 		sz += (*v).ComputeSize()
 	}
@@ -93,8 +93,8 @@ func (m NonLockingReadMap[T, TK]) FindItem(key TK) (*T, int, *[]*T) {
 	}
 }
 
-func (m *NonLockingReadMap[T, TK]) Set(v *T) (*T) {
-	restart:
+func (m *NonLockingReadMap[T, TK]) Set(v *T) *T {
+restart:
 	item, pivot, handle := m.FindItem((*v).GetKey())
 
 	if pivot != -1 {
@@ -106,15 +106,13 @@ func (m *NonLockingReadMap[T, TK]) Set(v *T) (*T) {
 		if !m.p.CompareAndSwap(handle, handle) {
 			goto restart
 		}
+		return item
 	}
 
-	newhandle := new([]*T) // new pointer wrapper
-	*newhandle = make([]*T, 0, len(*handle) + 1) // create new slice
+	newhandle := new([]*T)                        // new pointer wrapper
+	*newhandle = make([]*T, 0, len(*handle)+1)    // create new slice
 	*newhandle = append(*newhandle, (*handle)...) // copy old array
-	*newhandle = append(*newhandle, v) // add new item
-	sort.Slice(*newhandle, func (i, j int) bool { // sort
-		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
-	})
+	*newhandle = append(*newhandle, v)            // add new item
 	if !m.p.CompareAndSwap(handle, newhandle) {
 		goto restart
 	}
@@ -123,19 +121,19 @@ func (m *NonLockingReadMap[T, TK]) Set(v *T) (*T) {
 
 /* returns true if the key was present */
 func (m *NonLockingReadMap[T, TK]) Remove(key TK) *T {
-	restart:
+restart:
 	item, pivot, handle := m.FindItem(key)
 
 	if pivot == -1 {
 		return item // value does not exist
 	}
-	
+
 	// rebuild the array without the element
 	newhandle := new([]*T)
-	*newhandle = make([]*T, 0, len(*handle) - 1)
+	*newhandle = make([]*T, 0, len(*handle)-1)
 	*newhandle = append(*newhandle, (*handle)[0:pivot]...)
 	*newhandle = append(*newhandle, (*handle)[pivot+1:]...)
-	sort.Slice(*newhandle, func (i, j int) bool { // sort
+	sort.Slice(*newhandle, func(i, j int) bool { // sort
 		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
 	})
 	if !m.p.CompareAndSwap(handle, newhandle) {
@@ -144,4 +142,3 @@ func (m *NonLockingReadMap[T, TK]) Remove(key TK) *T {
 	// return the removed item
 	return item
 }
-
