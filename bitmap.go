@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  Carl-Philip Hänsch
+Copyright (C) 2024-2026  Carl-Philip Hänsch
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 package NonLockingReadMap
 
 import "math/bits"
+import "sync"
 import "sync/atomic"
 
 /*
@@ -27,30 +28,33 @@ Concurrency model
 -----------------
 There are two families of operations, distinguished by their name prefix:
 
-  Atomic* operations (AtomicSet, AtomicGet, AtomicOrFrom, …)
-    Each word-level read-modify-write is an atomic CAS loop, so multiple
-    goroutines may call these concurrently without external locking.
-    Use these when the bitmap is shared between goroutines.
+	Atomic* operations (AtomicSet, AtomicGet, AtomicOrFrom, …)
+	  Each word-level read-modify-write is an atomic CAS loop, so multiple
+	  goroutines may call these concurrently without external locking.
+	  Use these when the bitmap is shared between goroutines.
 
-  Plain operations (Set, Get, OrFrom, …)
-    Perform direct (non-CAS) word reads/writes. They are NOT safe for
-    concurrent use — the caller must guarantee exclusive access (e.g.
-    under an external mutex). They are faster because they avoid the
-    CAS retry overhead.
+	Plain operations (Set, Get, OrFrom, …)
+	  Perform direct (non-CAS) word reads/writes. They are NOT safe for
+	  concurrent use — the caller must guarantee exclusive access (e.g.
+	  under an external mutex). They are faster because they avoid the
+	  CAS retry overhead.
 
 Slice-pointer growth
-    Both families use a CAS on the atomic.Pointer to extend the backing
-    []uint64 slice. Growing is therefore always safe across goroutines.
-    After growth the returned slice is used directly; in the plain
-    family this assumes single-writer, so no second goroutine will
-    replace the slice pointer while a plain write is in flight.
+
+	Atomic operations hold a shared resize lock while updating a word.
+	The rare growth path takes the exclusive lock before copying and replacing
+	the backing slice, so a completed word update can never be lost during the
+	copy. Word updates themselves remain atomic CAS loops and operations on an
+	already-sized bitmap do not serialize with each other.
 
 Lazy allocation
-    The backing slice is nil until the first write. A zero-value
-    NonBlockingBitMap is ready to use and occupies only one pointer word.
+
+	The backing slice is nil until the first write. A zero-value
+	NonBlockingBitMap is ready to use and occupies only one pointer word.
 */
 type NonBlockingBitMap struct {
-	data atomic.Pointer[[]uint64]
+	data   atomic.Pointer[[]uint64]
+	resize sync.RWMutex
 }
 
 func NewBitMap() (result NonBlockingBitMap) {
@@ -59,7 +63,7 @@ func NewBitMap() (result NonBlockingBitMap) {
 
 func (b NonBlockingBitMap) ComputeSize() uint {
 	dataptr := b.data.Load()
-	var sz uint = 8 /* atomic pointer */ + 16 /* allocation of slice */ + 24 /* slice */
+	var sz uint = 8 /* atomic pointer */ + 24 /* resize lock */ + 16 /* allocation of slice */ + 24 /* slice */
 	if dataptr != nil {
 		sz += 8 * uint(len(*dataptr)) /* slice storage */
 	}
@@ -86,32 +90,32 @@ func (b *NonBlockingBitMap) Copy() (result NonBlockingBitMap) {
 	return
 }
 
-// ensureWord grows the backing slice to include wordIdx if necessary.
-// It returns the (possibly newly allocated) slice. Safe to call from multiple
-// goroutines because it uses a CAS on the slice pointer.
-//
-// The copy of existing elements uses atomic.LoadUint64 to avoid a race with
-// concurrent Atomic* writes on the old slice: a plain copy() would conflict
-// with a CompareAndSwapUint64 on the same element.
+// ensureWord grows the backing slice to include wordIdx if necessary. Plain
+// callers still require exclusive ownership after this function returns.
 func (b *NonBlockingBitMap) ensureWord(wordIdx uint) []uint64 {
-	for {
-		dataptr := b.data.Load()
-		var data []uint64
-		if dataptr != nil {
-			data = *dataptr
-		}
-		if wordIdx < uint(len(data)) {
-			return data
-		}
-		newdata := make([]uint64, wordIdx+1)
-		for i := range data {
-			newdata[i] = atomic.LoadUint64(&data[i])
-		}
-		if b.data.CompareAndSwap(dataptr, &newdata) {
-			return newdata
-		}
-		// Lost the race — retry with the updated pointer.
+	b.resize.RLock()
+	dataptr := b.data.Load()
+	if dataptr != nil && wordIdx < uint(len(*dataptr)) {
+		data := *dataptr
+		b.resize.RUnlock()
+		return data
 	}
+	b.resize.RUnlock()
+
+	b.resize.Lock()
+	defer b.resize.Unlock()
+	dataptr = b.data.Load()
+	var data []uint64
+	if dataptr != nil {
+		data = *dataptr
+	}
+	if wordIdx < uint(len(data)) {
+		return data
+	}
+	newdata := make([]uint64, wordIdx+1)
+	copy(newdata, data)
+	b.data.Store(&newdata)
+	return newdata
 }
 
 // ---------------------------------------------------------------------------
@@ -182,19 +186,37 @@ func (b *NonBlockingBitMap) Set(i uint, val bool) {
 // The read-modify-write is atomic: concurrent AtomicSet calls on the same
 // or different bits are safe without external locking.
 func (b *NonBlockingBitMap) AtomicSet(i uint, val bool) {
-	data := b.ensureWord(i >> 6)
+	wordIdx := i >> 6
+	b.lockExistingWord(wordIdx)
+	defer b.resize.RUnlock()
+	data := *b.data.Load()
 	bit := uint64(1) << (i & 63)
 	for {
-		old := atomic.LoadUint64(&data[i>>6])
+		old := atomic.LoadUint64(&data[wordIdx])
 		var ncell uint64
 		if val {
 			ncell = old | bit
 		} else {
 			ncell = old &^ bit
 		}
-		if atomic.CompareAndSwapUint64(&data[i>>6], old, ncell) {
+		if atomic.CompareAndSwapUint64(&data[wordIdx], old, ncell) {
 			return
 		}
+	}
+}
+
+// lockExistingWord returns with resize.RLock held and the requested word
+// present. Holding the lock prevents a concurrent grow-copy from missing the
+// caller's subsequent atomic word update.
+func (b *NonBlockingBitMap) lockExistingWord(wordIdx uint) {
+	for {
+		b.resize.RLock()
+		dataptr := b.data.Load()
+		if dataptr != nil && wordIdx < uint(len(*dataptr)) {
+			return
+		}
+		b.resize.RUnlock()
+		b.ensureWord(wordIdx)
 	}
 }
 
@@ -378,7 +400,9 @@ func (b *NonBlockingBitMap) atomicOrWord(wordIdx uint, mask uint64) {
 	if mask == 0 {
 		return
 	}
-	data := b.ensureWord(wordIdx)
+	b.lockExistingWord(wordIdx)
+	defer b.resize.RUnlock()
+	data := *b.data.Load()
 	for {
 		old := atomic.LoadUint64(&data[wordIdx])
 		if atomic.CompareAndSwapUint64(&data[wordIdx], old, old|mask) {
@@ -391,7 +415,9 @@ func (b *NonBlockingBitMap) atomicXorWord(wordIdx uint, mask uint64) {
 	if mask == 0 {
 		return
 	}
-	data := b.ensureWord(wordIdx)
+	b.lockExistingWord(wordIdx)
+	defer b.resize.RUnlock()
+	data := *b.data.Load()
 	for {
 		old := atomic.LoadUint64(&data[wordIdx])
 		if atomic.CompareAndSwapUint64(&data[wordIdx], old, old^mask) {
@@ -404,6 +430,8 @@ func (b *NonBlockingBitMap) atomicAndNotWord(wordIdx uint, mask uint64) {
 	if mask == 0 {
 		return
 	}
+	b.resize.RLock()
+	defer b.resize.RUnlock()
 	dataptr := b.data.Load()
 	if dataptr == nil {
 		return

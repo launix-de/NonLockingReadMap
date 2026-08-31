@@ -97,6 +97,25 @@ func TestSetReplacesWithoutDuplicatingKey(t *testing.T) {
 	}
 }
 
+func TestSetMaintainsSortedSearchOrder(t *testing.T) {
+	m := New[KeyValue, string]()
+	for _, key := range []string{"zulu", "alpha", "middle", "beta"} {
+		m.Set(&KeyValue{Key: key, Value: key})
+	}
+	for _, key := range []string{"alpha", "beta", "middle", "zulu"} {
+		if got := m.Get(key); got == nil || got.Value != key {
+			t.Fatalf("Get(%q) = %v after out-of-order inserts", key, got)
+		}
+	}
+	items := m.p.Load()
+	for index := 1; index < len(*items); index++ {
+		if (*(*items)[index-1]).Key >= (*(*items)[index]).Key {
+			t.Fatalf("entries are not sorted at index %d: %q >= %q", index,
+				(*(*items)[index-1]).Key, (*(*items)[index]).Key)
+		}
+	}
+}
+
 func TestConcurrentRead(t *testing.T) {
 	// create
 	m := New[KeyValue, string]()
