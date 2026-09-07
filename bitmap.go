@@ -61,7 +61,7 @@ func NewBitMap() (result NonBlockingBitMap) {
 	return
 }
 
-func (b *NonBlockingBitMap) ComputeSize() uint {
+func (b NonBlockingBitMap) ComputeSize() uint {
 	dataptr := b.data.Load()
 	var sz uint = 8 /* atomic pointer */ + 24 /* resize lock */ + 16 /* allocation of slice */ + 24 /* slice */
 	if dataptr != nil {
