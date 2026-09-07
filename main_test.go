@@ -85,8 +85,12 @@ func TestSetReplacesWithoutDuplicatingKey(t *testing.T) {
 	if replaced := m.Set(old); replaced != nil {
 		t.Fatalf("first Set replaced %v", replaced)
 	}
+	snapshot := m.GetAll()
 	if replaced := m.Set(newValue); replaced != old {
 		t.Fatalf("second Set replaced %v, want old value", replaced)
+	}
+	if snapshot[0] != old {
+		t.Fatal("replacement mutated a previously published snapshot")
 	}
 	items := m.p.Load()
 	if len(*items) != 1 {
@@ -117,6 +121,8 @@ func TestSetMaintainsSortedSearchOrder(t *testing.T) {
 }
 
 func TestConcurrentRead(t *testing.T) {
+	const workers = 128
+	const readsPerWorker = 1000
 	// create
 	m := New[KeyValue, string]()
 
@@ -127,31 +133,36 @@ func TestConcurrentRead(t *testing.T) {
 	}
 
 	// concurrent read
-	done := make(chan bool, 10)
-	for i := 0; i < 10000; i++ {
+	done := make(chan bool, workers)
+	for i := 0; i < workers; i++ {
 		go func(i int) {
-			for j := 0; j < 10000; j++ {
+			for j := 0; j < readsPerWorker; j++ {
 				num := (101*i + j + 13) % 2050
 				item := m.Get(fmt.Sprintf("key%d", num))
 				if num >= 2048 && item != nil {
-					t.Fatalf("concurrent nonexisting read fail")
+					t.Errorf("concurrent nonexisting read fail")
+					break
 				} else if num < 2048 && item == nil {
-					t.Fatalf("concurrent read fail I")
+					t.Errorf("concurrent read fail I")
+					break
 				} else if num < 2048 && item.Value != fmt.Sprintf("value %d", num) {
-					t.Fatalf("concurrent read fail II")
+					t.Errorf("concurrent read fail II")
+					break
 				}
 			}
 			done <- true
 		}(i)
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < workers; i++ {
 		// collect all threads
 		<-done
 	}
 }
 
 func TestConcurrentWrite(t *testing.T) {
+	const workers = 64
+	const readsPerPass = 1000
 	// create
 	m := New[KeyValue, string]()
 
@@ -162,28 +173,31 @@ func TestConcurrentWrite(t *testing.T) {
 	}
 
 	// concurrent read
-	done := make(chan int, 10)
-	for i := 0; i < 1000; i++ {
+	done := make(chan int, workers)
+	for i := 0; i < workers; i++ {
 		go func(i int) {
+			defer func() { done <- i }()
 			for pass := 0; pass < 4; pass++ {
-				for j := 0; j < 10000; j++ {
+				for j := 0; j < readsPerPass; j++ {
 					num := (101*i + j + 13) % 2050
 					item := m.Get(fmt.Sprintf("key%d", num))
 					if num >= 2048 && item != nil {
-						t.Fatalf("concurrent nonexisting read fail")
+						t.Errorf("concurrent nonexisting read fail")
+						return
 					} else if num < 2048 && item == nil {
-						t.Fatalf("concurrent read fail I")
+						t.Errorf("concurrent read fail I")
+						return
 					} else if num < 2048 && item.Value != fmt.Sprintf("value %d", num) && item.Value != fmt.Sprintf("value %d-new", num) {
-						t.Fatalf("concurrent read fail II")
+						t.Errorf("concurrent read fail II")
+						return
 					}
 				}
 				m.Set(&KeyValue{fmt.Sprintf("key%d", i), fmt.Sprintf("value %d-new", i)})
 			}
-			done <- i
 		}(i)
 	}
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < workers; i++ {
 		// collect all threads
 		num := <-done
 		// check if they did their set

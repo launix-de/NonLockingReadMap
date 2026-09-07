@@ -18,7 +18,6 @@ Copyright (C) 2024-2026  Carl-Philip Hänsch
 package NonLockingReadMap
 
 import "sort"
-import "unsafe"
 import "sync/atomic"
 import "golang.org/x/exp/constraints"
 
@@ -44,11 +43,12 @@ type KeyGetter[TK constraints.Ordered] interface {
 	GetKey() TK
 }
 type NonLockingReadMap[T KeyGetter[TK], TK constraints.Ordered] struct {
-	p atomic.Pointer[[]*T]
+	p *atomic.Pointer[[]*T]
 }
 
 func New[T KeyGetter[TK], TK constraints.Ordered]() NonLockingReadMap[T, TK] {
 	var result NonLockingReadMap[T, TK]
+	result.p = new(atomic.Pointer[[]*T])
 	result.p.Store(new([]*T))
 	return result
 }
@@ -98,12 +98,11 @@ restart:
 	item, pivot, handle := m.FindItem((*v).GetKey())
 
 	if pivot != -1 {
-		// replace in-place
-		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&(*handle)[pivot])), unsafe.Pointer(item), unsafe.Pointer(v)) {
-			goto restart
-		}
-		// also check if our list stayed unchanged
-		if !m.p.CompareAndSwap(handle, handle) {
+		newhandle := new([]*T)
+		*newhandle = make([]*T, len(*handle))
+		copy(*newhandle, *handle)
+		(*newhandle)[pivot] = v
+		if !m.p.CompareAndSwap(handle, newhandle) {
 			goto restart
 		}
 		return item

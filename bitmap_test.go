@@ -18,7 +18,6 @@ Copyright (C) 2024  Carl-Philip Hänsch
 package NonLockingReadMap
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 )
@@ -258,7 +257,7 @@ func TestAndNotFromEmptyTarget(t *testing.T) {
 	// AndNotFrom on a nil/empty target must not panic.
 	var a, b NonBlockingBitMap
 	b.Set(10, true)
-	a.AndNotFrom(&b, 0)      // a is empty — no-op
+	a.AndNotFrom(&b, 0)       // a is empty — no-op
 	a.AtomicAndNotFrom(&b, 0) // same
 }
 
@@ -456,5 +455,4 @@ func TestPrintSizes(t *testing.T) {
 	t.Logf("empty NonBlockingBitMap ComputeSize = %d bytes", empty.ComputeSize())
 	empty.Set(63, true)
 	t.Logf("1-word NonBlockingBitMap ComputeSize = %d bytes", empty.ComputeSize())
-	fmt.Sprintf("") // suppress unused import warning
 }

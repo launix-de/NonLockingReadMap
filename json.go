@@ -19,6 +19,7 @@ package NonLockingReadMap
 
 import "sort"
 import "encoding/json"
+import "sync/atomic"
 
 func (m NonLockingReadMap[T, TK]) MarshalJSON() ([]byte, error) {
 	// serialize through map (inefficient but nobody cares for now)
@@ -29,7 +30,7 @@ func (m NonLockingReadMap[T, TK]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(temp)
 }
 
-func (m *NonLockingReadMap[T, TK]) UnmarshalJSON(b []byte) (error) {
+func (m *NonLockingReadMap[T, TK]) UnmarshalJSON(b []byte) error {
 	// deserialize through map (inefficient but nobody cares for now)
 	newhandle := new([]*T)
 	temp := make(map[TK]*T)
@@ -43,10 +44,10 @@ func (m *NonLockingReadMap[T, TK]) UnmarshalJSON(b []byte) (error) {
 		(*newhandle)[i] = v
 		i++
 	}
-	sort.Slice(*newhandle, func (i, j int) bool { // sort
+	sort.Slice(*newhandle, func(i, j int) bool { // sort
 		return (*(*newhandle)[i]).GetKey() < (*(*newhandle)[j]).GetKey()
 	})
-	m.p.Store(newhandle) // forcably store since we are still in single core context, no value escaping yet
+	m.p = new(atomic.Pointer[[]*T])
+	m.p.Store(newhandle) // forcibly store since no value escapes during decoding
 	return nil
 }
-

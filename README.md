@@ -1,6 +1,21 @@
 # NonLockingReadMap
 Golang implementation of a non locking read optimized map
 
+`ReadMap[K, V]` is the preferred interface for new code. It keeps immutable
+ordered key/value snapshots, so mutable values do not need to implement a key
+method and readers never copy or inspect them to find a key.
+
+```go
+m := NonLockingReadMap.NewReadMap[string, *User]()
+m.Set("peter", &User{Name: "Peter"})
+user := m.Get("peter")
+```
+
+`Get`, `GetAll`, `Set`, and `Remove` use ordered keys. Reads are lock-free and
+allocation-free. Writes are serialized and atomically publish a new immutable
+snapshot without blocking readers. Treat the slice returned by `GetAll` as
+read-only.
+
 
 properties of this map:
 - read in O(log(N))
